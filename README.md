@@ -15,9 +15,9 @@ pip install aiohttp
 ```
 set the variables
 ```
-'LOCAL_TOKEN_FILE to the file with the token json
-'CLIENT_ID
-'LATITUDE #with your GPS coordinates of your PV
-'LONGITUDE #with you GPS coordinates of your PV
-'HOST #ip of you sungrow inverter in the local network
+LOCAL_TOKEN_FILE #file with the token json for the Tesla account
+CLIENT_ID #client id of the Tesla API
+LATITUDE #with your GPS coordinates of your PV
+LONGITUDE #with you GPS coordinates of your PV
+HOST #ip of you sungrow inverter in the local network
 ```
