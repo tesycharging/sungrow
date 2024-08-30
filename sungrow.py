@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import requests
 import json
 import time
@@ -13,7 +13,7 @@ import subprocess
 LOCAL_TOKEN_FILENAME = "./tesla_token_api.json" 
 
 # client id from the tesla api
-CLIENT_ID = "84ce5bcc7357-4819-9638-b67793b28cac" 
+CLIENT_ID = "" 
 
 # url to your tesla server "eu" or "us"
 URL = 'https://fleet-api.prd.eu.vn.cloud.tesla.com/api/1/vehicles'
@@ -23,11 +23,11 @@ CERTIFICATE_FILE_NAME="./public.cer"
 CERTIFICATE_KEY_FILE_NAME="./private.pem" 
 
 # device token used for sending APNs
-DEVICE_TOKEN="3fe9e5e343b4345df22b1fa50400028c84a5944bd7adfbc6d556907b1380ca16"
+DEVICE_TOKEN=""
 
 # gps coordinate from your sungrow inverter
-LATITUDE = 47.51218 
-LONGITUDE = 8.72589 
+LATITUDE = 42.51218 
+LONGITUDE = 6.72589 
 
 # ip or hostname of your sungrow inverter
 HOST = "192.168.8.50" 
@@ -57,8 +57,7 @@ def refreshToken():
                 "scope": "openid email offline_access vehicle_device_data vehicle_cmds vehicle_charging_cmds"
     }
     token = requests.post('https://auth.tesla.com/oauth2/v3/token', json=refresh_json)
-    if token.status_code == 401:
-        sendAPNs("Error", "cound not refresh token\ncopy the file \"tesla_token_api.json\" to the server", 1.0)
+    if token.status_code != 200:
         raise requests.exceptions.ConnectionError("couldn't refresh token, status_code: " + str(token.status_code))
     else:
         print("refresh token success")
@@ -74,8 +73,12 @@ class Vehicle:
 
 def getVehicle(access_token, pos):
     headers = {"User-Agent": "TesyCharging", "content-type": "application/json; charset=UTF-8", 'Authorization': 'Bearer {}'.format(access_token)}
-    response = requests.get(URL, headers=headers).json()
-    return Vehicle(response["response"], pos)
+    response = requests.get(URL, headers=headers) #.json()
+    if response.status_code != 200:
+        raise requests.exceptions.ConnectionError("getVehicle: request status code: " + str(response.status_code))
+    else:
+        response_json = response.json()
+        return Vehicle(response_json["response"], pos)
 
 # function to get the charging status (Charging, Disconnected, ...)
 class Charge_State:
@@ -88,39 +91,46 @@ class Charge_State:
         self.charger_voltage = charge_state["charger_voltage"]
         self.charge_current_request_max = charge_state["charge_current_request_max"]
         self.csvLine = str(self.charger_actual_current) + "\t" + str(self.charger_power) + "\t" + str(self.charger_voltage) + "\t" + str(self.charge_current_request_max) + "\t"
-        print("++Charge_State++")
-        print("charging_state: " + self.charging_state)
-        print("charge_amps: " + str(self.charge_amps))
-        print("charger_actual_current: " + str(self.charger_actual_current))
-        print("charge_current_request: " + str(self.charge_current_request))
-        print("charger_power: " + str(self.charger_power))
-        print("charger_voltage: " + str(self.charger_voltage))
-        print("charge_current_request_max: " + str(self.charge_current_request_max))
-        print("++++")
+        #print("++Charge_State++")
+        #print("charging_state: " + self.charging_state)
+        #print("charge_amps: " + str(self.charge_amps))
+        #print("charger_actual_current: " + str(self.charger_actual_current))
+        #print("charge_current_request: " + str(self.charge_current_request))
+        #print("charger_power: " + str(self.charger_power))
+        #print("charger_voltage: " + str(self.charger_voltage))
+        #print("charge_current_request_max: " + str(self.charge_current_request_max))
+        #print("++++")
 
 def chargingStatus(access_token, id):
     headers = {"User-Agent": "TesyCharging", "content-type": "application/json; charset=UTF-8", 'Authorization': 'Bearer {}'.format(access_token)}
     url_vehicle = URL + "/" + str(id) + "/vehicle_data"
-    response = requests.get(url_vehicle, headers=headers).json()
-    charge_state = Charge_State(response["response"]["charge_state"])
-    return charge_state
+    response = requests.get(url_vehicle, headers=headers)
+    if response.status_code != 200:
+        raise requests.exceptions.ConnectionError("chargingStatus: requests status code: " + str(response.status_code))
+    else:
+        response_json = response.json()
+        return Charge_State(response_json["response"]["charge_state"])
 
 # function to check if the car is at home
 def isHome(access_token, id):
     headers = {"User-Agent": "TesyCharging", "content-type": "application/json; charset=UTF-8", 'Authorization': 'Bearer {}'.format(access_token)}
     url_location_data = URL + "/" + str(id) + "/vehicle_data?endpoints=location_data"
-    response = requests.get(url_location_data, headers=headers).json()
-    lat: float = response["response"]["drive_state"]["latitude"]
-    lon: float  = response["response"]["drive_state"]["longitude"]
+    response = requests.get(url_location_data, headers=headers)
+    if response.status_code != 200:
+        raise requests.exceptions.ConnectionError("isHome: request status code: " + str(response.status_code))
+    else:
+        response_json = response.json()
+    lat: float = response_json["response"]["drive_state"]["latitude"]
+    lon: float  = response_json["response"]["drive_state"]["longitude"]
     latitude_ = round(LATITUDE, 3)
     longitude_ = round(LONGITUDE, 3)
     lat = round(lat, 3)
     lon = round(lon, 3)
     if lat == latitude_ and lon == longitude_:
-        return 1
+        return True
     else:
         print("Tesla is at " + str(lat) + ", " + str(lon))
-        return 0
+        return False
 
 # function to set the current
 def setCharge_Amps(access_token, id, charging_amps):
@@ -151,15 +161,15 @@ class SungrowData:
         self.totalLoadPower = float(data["load_total_active_power"][2])
         self.gridPower = round((self.dcPower - self.totalLoadPower - self.batteryChargingPower + self. batteryDischargingPower) * -1, 2)
         self.csvLine = str(self.battery_soc) + "\t" + str(self.batteryChargingPower) + "\t" + str(self.batteryDischargingPower) + "\t" + str(self.dcPower) + "\t" + str(self.totalLoadPower) + "\t" + str(self.activePower) + "\t" + str(self.gridPower) + "\t"
-        print("++SungrowData++")
-        print("battery_soc: " + str(self.battery_soc))
-        print("batteryChargingPower " + str(self.batteryChargingPower))
-        print("batteryDischargingPower " + str(self.batteryDischargingPower))
-        print("acPower " + str(self.dcPower))
-        print("activePower " + str(self.activePower))
-        print("totalLoadPower " + str(self.totalLoadPower))
-        print("gridPower " + str(self.gridPower))
-        print("++++")       
+        #print("++SungrowData++")
+        #print("battery_soc: " + str(self.battery_soc))
+        #print("batteryChargingPower " + str(self.batteryChargingPower))
+        #print("batteryDischargingPower " + str(self.batteryDischargingPower))
+        #print("acPower " + str(self.dcPower))
+        #print("activePower " + str(self.activePower))
+        #print("totalLoadPower " + str(self.totalLoadPower))
+        #print("gridPower " + str(self.gridPower))
+        #print("++++")       
 
     @staticmethod
     def apnsMessageBody(self):
@@ -202,8 +212,7 @@ class SungrowJSON:
 
 def calculatePossibleCurrent(sgData, charge_state):
     if sgData.battery_soc > 80:
-        print("Battery has over 80%")
-        #powerUsedFromTesla = charge_state.charge_amps * charge_state.charger_voltage / 1000
+        print("Sungrow Battery has over 80%")
         powerUsedFromTesla = charge_state.charger_actual_current * charge_state.charger_voltage / 1000
         print("Tesla is charing with " + str(powerUsedFromTesla) + " kW")
         current_max = round(((powerUsedFromTesla - sgData.gridPower) * 1000 / charge_state.charger_voltage), 0)
@@ -217,9 +226,7 @@ def calculatePossibleCurrent(sgData, charge_state):
         print("Battery below 80%")
         return 0
 
-def sendAPNs(subtitle, body, relevance, sound="coin.aiff"):
-    title = "sungrow"
-
+def sendAPNs(title, subtitle, body, relevance, sound="coin.aiff"):
     # add "-v" for verbose
     curlcommand = 'curl \
       --cert "' + CERTIFICATE_FILE_NAME + '" \
@@ -238,7 +245,7 @@ def writeCVS(line):
     file = dir_path + "/" +str(date.today()) + "_sungrow.csv"
     if not os.path.isfile(file):
         # create a file
-        title_line = "date                      \tbattery\tchar\tdischar\tdc\tload\tactive\tgrid\tcurrent\tpower\tvoltage\tmax\tset A\t"
+        title_line = "date            \tbattery\tchar\tdischar\tdc\tload\tactive\tgrid\tcurrent\tpower\tvoltage\tmax\tset A\t"
         with open(file, 'w', encoding='utf-8') as f:
             f.write(f'{title_line}')
     # append a line
@@ -247,83 +254,117 @@ def writeCVS(line):
 
 
 ##################
-x = datetime.datetime.now()
-print(x)
-line = str(x) + "\t"
+requestToTesla = True
+apns_title = "sungrow"
+apns_subtitle = ""
+apns_body = ""
+apns_warning = ""
+now = datetime.now() # current date and time
+date_time = now.strftime("%Y-%m-%d %H:%M")
+print(date_time)
+line = date_time + "\t"
 try:
     sungrowfile = SungrowJSON()
     sgData = SungrowData(HOST)
-    sendAPNs(sgData.apnsMessageSubtitle(sgData), sgData.apnsMessageBody(sgData), 0.1, "") # low relevance-score, no sound
+    apns_subtitle = sgData.apnsMessageSubtitle(sgData)
+    apns_body = sgData.apnsMessageBody(sgData)
     line = line + sgData.csvLine
     if sgData.gridPower > 0 and sungrowfile.gridPower <= 0:
-        sendAPNs("consuming power from the grid", "more than " + str(sgData.gridPower), 0.9)
-    if sgData.gridPower < 0 and sungrowfile.gridPower >= 0:
-        sendAPNs("providing power to the grid", "more than " + str(sgData.gridPower * -1), 0.9)
+        apns_warning = "consuming power from the grid (" + str(sgData.gridPower) + "kW)"
+    elif sgData.gridPower < 0 and sungrowfile.gridPower >= 0:
+        apns_warning = "providing power to the grid (" + str(sgData.gridPower) + "kW)"
     if sgData.battery_soc > 95 and sungrowfile.battery_soc <= 95:
-        sendAPNs("battery is full", str(sgData.battery_soc) + " %", 0.9)
-    if sgData.battery_soc < 20 and sungrowfile.battery_soc >= 20:
-        sendAPNs("battery is below 20%", str(sgData.battery_soc) + " %", 0.9)
+        if apns_warning == "":
+            apns_warning = apns_warning + "\\n"
+        apns_warning = apns_warning + "sungrow battery is full (" + str(sgData.battery_soc) + "%)"
+    elif sgData.battery_soc < 20 and sungrowfile.battery_soc >= 20:
+        if apns_warning == "":
+            apns_warning = apns_warning + "\\n"
+        apns_warning = apns_warning + "sungrow battery is below 20% (" + str(sgData.battery_soc) + "%)"
     sungrowfile.writeFile(sgData.battery_soc, sgData.gridPower)
-    refreshToken()
-    access_token = getAccess_Token()
-    vehicle = getVehicle(access_token, 0)
+    if requestToTesla:
+        refreshToken()
+        access_token = getAccess_Token()
+        vehicle = getVehicle(access_token, 0)
 
-    if vehicle.state == "online":
-        print("Tesla is online")
-        charge_state = chargingStatus(access_token, vehicle.id)
-        if charge_state.charging_state == "Charging":
-            # check if the car is at home
-            if isHome(access_token, vehicle.id) == 1:
-                print("Tesla is at home and charging")
-                line = line + charge_state.csvLine
-                current = calculatePossibleCurrent(sgData, charge_state)
-                #if current != charge_state.charge_amps:
-                if current != charge_state.charger_actual_current:
-                    setCharge_Amps(access_token, vehicle.id, current)
-                    print("current is changed from " + str(charge_state.charger_actual_current) + " A to " + str(current) + " A is set")
-                    line = line + str(current) + "\t"
-                    sendAPNs("charging current is changed at home", "from " + str(charge_state.charger_actual_current) + " A to " + str(current) + " A is set", 1.0)
-                    #notify that current changed
-                    #honk(access_token, vehicle.id)
+        if vehicle.state == "online":
+            print("Tesla is online")
+            charge_state = chargingStatus(access_token, vehicle.id)
+            if charge_state.charging_state == "Charging":
+                # check if the car is at home
+                if isHome(access_token, vehicle.id):
+                    print("Tesla is at home and charging")
+                    line = line + charge_state.csvLine
+                    current = calculatePossibleCurrent(sgData, charge_state)
+                    #if current != charge_state.charge_amps:
+                    if current != charge_state.charger_actual_current:
+                        setCharge_Amps(access_token, vehicle.id, current)
+                        print("current is changed from " + str(charge_state.charger_actual_current) + " A to " + str(current) + " A is set")
+                        line = line + str(current) + "\t"
+                        apns_title = "charging @home changed from " + str(charge_state.charger_actual_current) + "A to " + str(current) + "A"
+                        #notify that current changed
+                        #honk(access_token, vehicle.id)
+                    else:
+                        print("don't need to change anything")
+                        apns_title = "charging @home with " + str(current) + "A - " + str(current * charge_state.charger_voltage / 1000) + "kW"
                 else:
-                    print("don't need to change anything")
-                    sendAPNs("Tesla is at home and charging", "actual current: " + str(current) + "A", 0.1, "") # low relevance-score, no sound
+                    print("Tesla is not at home")
+                    line = line + "Tesla is not charging at home\t"
+                    apns_title = "charing with " + str(current * charge_state.charger_voltage / 1000) + "kW"
             else:
-                print("Tesla is not at home")
-                sendAPNs("Tesla is not at home", "actual current: " + str(current) + "A", 1.0, "")
+                print("Tesla is " + charge_state.charging_state)
+                line = line + "Tesla is " + charge_state.charging_state + "\t"
         else:
-            print("Tesla is " + charge_state.charging_state)
+            print("Tesla is " + vehicle.state)
+            line = line + "Tesla is " + vehicle.state + "\t"
+            apns_body = apns_body + " Tesla is " + vehicle.state
     else:
-        print("Tesla is " + vehicle.state)
+        line = line + "Tesla was not requested\t"
 except requests.exceptions.RequestException as err:
-    print ("OOps: Something Else",err)
-    sendAPNs("Error", str(err), 1.0)
+    print ("Request Error:", str(err))
+    apns_title = str(err)
+    apns_warning = apns_warning + "request error"
     line = line + str(err) + "\t"
 except requests.exceptions.HTTPError as errh:
     print ("Http Error:",errh)
+    apns_title = errh
+    apns_warning = apns_warning + "request error"
     line = line + errh + "\t"
 except requests.exceptions.ConnectionError as errc:
     print ("Error Connecting:",errc)
-    sendAPNs("Error", errc, 1.0)
+    apns_title = errc
+    apns_warning = apns_warning + "request error"
     line = line + errc + "\t"
 except requests.exceptions.Timeout as errt:
     print ("Timeout Error:",errt) 
+    apns_title = errt
+    apns_warning = apns_warning + "request error"
     line = line + errt + "\t"    
 except KeyError as keyerr:
     print ("Key Error:",keyerr)
-    sendAPNs("Error", keyerr, 1.0)
+    apns_title = keyerr
+    apns_warning = apns_warning + "request error"
     line = line + keyerr + "\t"
 except FileNotFoundError as fileError:
     print ("File not found:",fileError)
-    sendAPNs("Error", str(fileError), 1.0)
+    apns_title = str(fileError)
+    apns_warning = apns_warning + "request error"
     line = line + str(fileError) + "\t"
 except aiohttp.client_exceptions.ServerDisconnectedError as discon:
     print ("Server Disconnected:",discon, HOST)
-    sendAPNs("Error", discon, 1.0)
+    apns_title = discon
+    apns_warning = apns_warning + "request error"
     line = line + discon + "\t"
 except aiohttp.client_exceptions.ClientConnectorError as clientcon:
     print ("Client Disconnected:",clientcon)
-    sendAPNs("Error", str(clientcon), 1.0)
+    apns_title = str(clientcon)
+    apns_warning = apns_warning + "request error"
     line = line + str(clientcon) + "\t"
+if apns_warning == "":
+    sendAPNs(apns_title, apns_subtitle, apns_body, 0.1, "")
+else:
+    sendAPNs(apns_title, apns_subtitle, apns_body + "\\n" + apns_warning, 1.0)
 writeCVS(line)
 print("---")
+command = 'cat ' + dir_path + '/' +str(date.today()) + '_sungrow.csv'
+subprocess.Popen(command, shell=True)
