@@ -14,19 +14,28 @@ pip install json
 pip install time
 pip install aiohttp
 ```
-set the variables
-### json with the tokens { "access_token": "", "refresh_token": "", "id_token": "", "expires_in: , "token_type": "Bearer"}
+set the config files 
+### the file sungrow.setting in json format
 ```
-LOCAL_TOKEN_FILENAME = "./tesla_token_api.json" 
+{
+  "authentication_token": "",
+  "device_token": "",
+  "inverter_host": "",
+  "latitude": 43.51205,
+  "longitude": 12.72584
+}
 ```
-### client id from the tesla api
+### the file tesla.token with the token for the Tesla API in json format
 ```
-CLIENT_ID = "" 
-```
-
-### url to your tesla server "eu" or "us"
-```
-URL = 'https://fleet-api.prd.eu.vn.cloud.tesla.com/api/1/vehicles'
+{
+  "access_token":"",
+  "region_url":"https:\/\/fleet-api.prd.eu.vn.cloud.tesla.com",
+  "id_token":"",
+  "expires_in":28800,
+  "token_type":"Bearer",
+  "refresh_token":"",
+  "client_id":""
+}
 ```
 
 ### public and private key for the APN service. Apple developer account required to create a private key. 
@@ -35,18 +44,3 @@ CERTIFICATE_FILE_NAME="./public.cer"
 CERTIFICATE_KEY_FILE_NAME="./private.pem" 
 ```
 
-### device token used for sending APNs
-```
-DEVICE_TOKEN=""
-```
-
-### gps coordinate from your sungrow inverter
-```
-LATITUDE = 45.51218 
-LONGITUDE = 2.72589 
-```
-
-### ip or hostname of your sungrow inverter
-```
-HOST = "192.168.8.50" 
-```
