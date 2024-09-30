@@ -238,7 +238,7 @@ class SungrowData:
         if hasFullBattery:
             self.thresholdFlag = "F" + self.thresholdFlag
         if self.shouldStopCharging:
-            self.trhesholdFlag = "S" + self.thresholdFlag
+            self.thresholdFlag = "S" + self.thresholdFlag
         
         #update sungrow.json file
         data = {"battery_soc":self.battery_soc,
@@ -273,7 +273,12 @@ class SungrowData:
         if hasLowBattery:
             self.messageWarning = "sungrow battery is below 20% (" + str(self.battery_soc) + "%)"
         elif hasFullBattery:
-            self.messageWarning = "sungrow battery is above 80% (" + str(self.battery_soc) + "%)"      
+            self.messageWarning = "sungrow battery is above 80% (" + str(self.battery_soc) + "%)"     
+        if self.shouldStopCharging:
+            if self.messageThreshold == "":
+                self.messageThreshold = "Tesla should stop charing "
+            else:
+                self.messageWarning = "Tesla should stop charing " + self.messageWarning
 
     # calculate the possible charging current that no power is taken from the grid
     def calculatePossibleCurrent(self, charge_state):
@@ -544,7 +549,7 @@ else:
     APNs(setting, messageThreshold, sungrowStatus, batteryPower + "\\n" + messageWarning + "\\n" + messageTesla, 1)   
     output = thresholdFlag + " \t" + output
 output = date_time + " \t" + output
-if logging or showJSON or not logging:
+if logging:
     writeCVS(output)    
 if showJSON:
     print(outputdata)
